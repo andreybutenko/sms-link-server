@@ -7,7 +7,7 @@ const getListing = (data, user, db, socket) => {
   db.collection('conversations')
     .aggregate([
         { $match: { userId: user.userId } },
-        {
+        { // find all messages for conversation
             $lookup: {
                 from: 'texts',
                 localField: 'threadId',
@@ -15,11 +15,12 @@ const getListing = (data, user, db, socket) => {
                 as: 'messages'
             }
         },
-        {
+        { // limit messages to those owned by this user
             $project: {
                 _id:  1,
                 threadId: 1,
                 userId: 1,
+                recipientIds: 1,
                 messages: {
                     $filter: {
                         input: '$messages',
@@ -31,12 +32,12 @@ const getListing = (data, user, db, socket) => {
                 }
             }
         },
-        {
+        { // sort messages
             $sort: {
                 'messages.date': -1
             }
         },
-        {
+        { // get the most recent
             $addFields: {
                 message: {
                     $arrayElemAt: ['$messages', 0]
@@ -48,7 +49,7 @@ const getListing = (data, user, db, socket) => {
                 messages: 0
             }
         },
-        {
+        { // sort then limit so next lookups aren't so heavy
             $sort: {
                 'message.date': -1
             }
@@ -56,41 +57,39 @@ const getListing = (data, user, db, socket) => {
         {
             $limit: 20
         },
-        {
+        { // create new item for each receipient
+            $unwind: '$recipientIds'
+        },
+        { // find all contacts
             $lookup: {
                 from: 'contacts',
-                localField: 'userId',
-                foreignField: 'userId',
+                localField: 'recipientIds',
+                foreignField: 'clientId',
                 as: 'contacts'
             }
         },
         {
             $project: {
-                _id:  1,
                 threadId: 1,
                 userId: 1,
                 message: 1,
+                contact: { $arrayElemAt: [ '$contacts', 0 ] }
+            }
+        },
+        { // group items with same id
+            $group: {
+                _id: '$_id',
+                threadId: { $first: '$threadId' },
+                userId: { $first: '$userId' },
+                message: { $first: '$message' },
                 contacts: {
-                    $filter: {
-                        input: '$contacts',
-                        as: 'contact',
-                        cond: {
-                            $in: ['$$ROOT.message.phone', '$$contact.phones']
-                        }
-                    }
+                    $push: '$contact'
                 }
             }
         },
-        {
-            $addFields: {
-                contact: {
-                    $arrayElemAt: ['$contacts', 0]
-                }
-            }
-        },
-        {
-            $project: {
-                contacts: 0
+        { // must resort after group
+            $sort: {
+                'message.date': -1
             }
         }
     ], {

@@ -112,6 +112,10 @@ io.on('connection', function (socket) {
     console.log(JSON.stringify(data, null, 2));
   });
 
+  socket.on('CONVERSATION', data => wrap(syncModule.onReceiveConversation, data));
+
+  socket.on('RECIPIENT_ID', data => wrap(syncModule.onReceiveContactRecipientId, data));
+
   socket.on('MMS', data => wrap(syncModule.onReceiveMms, data));
 
   socket.on('SMS', data => wrap(syncModule.onReceiveSms, data));

@@ -27,13 +27,69 @@ function cleanPhoneNumber(phoneNumber) {
   return phoneNumber;
 }
 
+const onReceiveConversation = (data, user, db, socket) => {
+  if(!authModule.assureSignedIn(user, socket)) return;
+  console.log('Got a conversation!');
+
+  const conversation = {
+    userId: user.userId,
+    threadId: parseInt(data._id),
+    recipientIds: data.recipient_ids.split(' ').map(recipient => parseInt(recipient)),
+    other: data
+  };
+
+  console.log(conversation);
+
+  db.collection('conversations')
+    .findOneAndUpdate(
+      { threadId: conversation.threadId, userId: conversation.userId },
+      { $setOnInsert: conversation },
+      { upsert: true },
+      (err, res) => {
+        if(!err) {
+          console.log('Saved conversation successfully');
+        }
+        else {
+          console.log('Error while saving conversation');
+          console.log(JSON.stringify(err, null, 2));
+        }
+      }
+    );
+}
+
+const onReceiveContactRecipientId = (data, user, db, socket) => {
+  if(!authModule.assureSignedIn(user, socket)) return;
+  console.log('Got a contact recipient id!');
+
+  db.collection('contacts')
+    .update(
+        {
+          userId: user.userId,
+          phones: cleanPhoneNumber(data.address)
+        }, {
+          $set: {
+            clientId: parseInt(data._id)
+          }
+        },
+        (err, res) => {
+          if(!err)  {
+            console.log('Updated contact with recipient id successfully');
+          }
+          else {
+            console.log('Error while updating contact with recipient id');
+            console.log(JSON.stringify(err, null, 2));
+          }
+        }
+    );
+}
+
 const onReceiveMms = (data, user, db, socket) => {
   if(!authModule.assureSignedIn(user, socket)) return;
   console.log('Got a mms!');
 
   const text = {
     userId: user.userId,
-    clientId: parseInt(data.message._id),
+    clientId: -1,
     threadId: parseInt(data.message.thread_id),
     phone: cleanPhoneNumber(data.address),
     date: new Date(parseInt(data.message.date * 1000)),
@@ -103,7 +159,7 @@ const onReceiveMms = (data, user, db, socket) => {
     .findOneAndUpdate(
       { threadId: text.threadId, userId: user.userId },
       { $setOnInsert: conversation },
-      { upsert: true, returnOriginal: false },
+      { upsert: true },
       (err, res) => {
         if(!err) {
           console.log('Saved conversation successfully');
@@ -133,7 +189,6 @@ const onReceiveSms = (data, user, db, socket) => {
   }
 
   console.log('SMS')
-  console.log(JSON.stringify(text, null, 2));
 
   db.collection('texts')
     .insertOne(text, (err, res) => {
@@ -155,7 +210,7 @@ const onReceiveSms = (data, user, db, socket) => {
     .findOneAndUpdate(
       { threadId: text.threadId, userId: user.userId },
       { $setOnInsert: conversation },
-      { upsert: true, returnOriginal: false },
+      { upsert: true },
       (err, res) => {
         if(!err) {
           console.log('Saved conversation successfully');
@@ -174,13 +229,16 @@ const onReceiveContact = (data, user, db, socket) => {
 
   const contact = {
     userId: user.userId,
+    lookupId: data.lookup,
+    // clientId: parseInt(data.contact_id),
+    clientId: parseInt(data._id),
     name: data.display_name,
     pinned: !!parseInt(data.pinned),
     starred: !!parseInt(data.starred),
     lastUpdated: data.contact_last_updated_timestamp,
     visible: !!parseInt(data.in_visible_group),
-    clientId: data.lookup,
-    phones: []
+    phones: [],
+    other: data
   }
 
   if(!!data.photo) {
@@ -248,6 +306,8 @@ const onReceiveContact = (data, user, db, socket) => {
 }
 
 module.exports = {
+  onReceiveConversation: onReceiveConversation,
+  onReceiveContactRecipientId: onReceiveContactRecipientId,
   onReceiveSms: onReceiveSms,
   onReceiveMms: onReceiveMms,
   onReceiveContact: onReceiveContact
