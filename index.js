@@ -5,7 +5,9 @@ const socketio = require('socket.io');
 const md5 = require('md5');
 const admin = require('firebase-admin');
 
+const authModule = require('./modules/authModule.js');
 const syncModule = require('./modules/syncModule.js');
+const fetchModule = require('./modules/fetchModule.js');
 
 const serviceAccount = require('./sms-link-firebase-adminsdk.json');
 const mongoUrl = 'mongodb://localhost:27017/smslink';
@@ -29,20 +31,36 @@ MongoClient.connect(mongoUrl, (err, mongoDb) => {
 });
 
 function handler (req, res) {
-  fs.readFile(__dirname + '/index.html',
-  function (err, data) {
-    if (err) {
-      res.writeHead(500);
-      return res.end('Error loading index.html');
-    }
+  const url = req.url.substring(1);
+  const urlSplit = url.split('/');
+  console.log(urlSplit)
+  if(urlSplit[0] === 'images') {
+    fs.readFile(__dirname + '/images/' + urlSplit[1], (err, data) => {
+      if(err) {
+        res.writeHead(500);
+        return res.end('Error loading image');
+      }
 
-    res.writeHead(200);
-    res.end(data);
-  });
+      res.writeHead(200);
+      res.end(data);
+    });
+  }
+  else {
+    fs.readFile(__dirname + '/index.html', (err, data) => {
+      if(err) {
+        res.writeHead(500);
+        return res.end('Error loading index.html');
+      }
+
+      res.writeHead(200);
+      res.end(data);
+    });
+  }
 }
 
 io.on('connection', function (socket) {
   let user = { signedIn: false };
+  console.log('New connection!');
 
   const wrap = (cb, data) => {
     return cb(data, user, db, socket);
@@ -88,9 +106,19 @@ io.on('connection', function (socket) {
     console.log(JSON.stringify(data, null, 2));
   });
 
+  socket.on('RESTRICTED', function (data) {
+    if(!authModule.assureSignedIn(user, socket)) return;
+    console.log('Accessed restricted route!');
+    console.log(JSON.stringify(data, null, 2));
+  });
+
   socket.on('MMS', data => wrap(syncModule.onReceiveMms, data));
 
   socket.on('SMS', data => wrap(syncModule.onReceiveSms, data));
 
   socket.on('CONTACT', data => wrap(syncModule.onReceiveContact, data));
+
+  socket.on('FETCH/LISTING', data => wrap(fetchModule.getListing, data));
+
+  socket.on('FETCH/CONVERSATION', data => wrap(fetchModule.getConversation, data));
 });

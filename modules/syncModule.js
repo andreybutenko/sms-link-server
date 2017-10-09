@@ -82,7 +82,6 @@ const onReceiveMms = (data, user, db, socket) => {
   }
 
   console.log('MMS')
-  console.log(JSON.stringify(text, null, 2));
 
   db.collection('texts')
     .insertOne(text, (err, res) => {
